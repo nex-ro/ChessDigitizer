@@ -46,6 +46,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   background:var(--border);color:var(--muted);
   padding:2px 8px;border-radius:20px;margin-left:2px;
 }
+.topbar-badge.live{background:rgba(248,113,113,.15);color:var(--red);display:none;align-items:center;gap:5px}
+.topbar-badge.live .live-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .topbar-spacer{flex:1}
 .topbar-fen{
   display:none;align-items:center;gap:8px;
@@ -87,6 +90,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   text-transform:uppercase;color:var(--muted);margin-bottom:8px;
 }
 
+/* Source mode switch */
+.mode-switch{display:flex;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:3px;gap:3px}
+.mode-btn{flex:1;text-align:center;padding:8px 4px;border-radius:6px;font-size:.78rem;font-weight:600;cursor:pointer;color:var(--muted);transition:background .15s,color .15s}
+.mode-btn.active{background:var(--accent);color:#000}
+.mode-btn:not(.active):hover{color:var(--text)}
+
 /* Drop zone */
 .drop{
   border:2px dashed var(--border);border-radius:var(--r);
@@ -109,10 +118,34 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 
+/* Camera panel (left) */
+.cam-panel{display:none;flex-direction:column;gap:14px}
+.cam-select-row{display:flex;gap:8px}
+.cam-select-row select{flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);
+  border-radius:6px;padding:8px;font-size:.78rem}
+.cam-preview-wrap{position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:#000}
+.cam-preview-wrap video{width:100%;display:block;max-height:200px;object-fit:contain;background:#000}
+.cam-status{position:absolute;top:6px;left:6px;font-family:var(--mono);font-size:.65rem;
+  background:rgba(0,0,0,.6);padding:2px 8px;border-radius:20px;color:var(--muted)}
+.cam-status.on{color:var(--accent)}
+
+/* Live controls */
+.live-toggle-row{display:flex;align-items:center;justify-content:space-between;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.live-toggle-row .ltl{font-size:.8rem;font-weight:500}
+.switch{position:relative;width:40px;height:22px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.switch-slider{position:absolute;inset:0;background:var(--border);border-radius:22px;cursor:pointer;transition:.2s}
+.switch-slider::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;
+  border-radius:50%;transition:.2s}
+.switch input:checked + .switch-slider{background:var(--accent)}
+.switch input:checked + .switch-slider::before{transform:translateX(18px)}
+.switch input:disabled + .switch-slider{opacity:.4;cursor:not-allowed}
+
 /* Slider */
 .slider-row{display:flex;align-items:center;gap:10px}
 .slider-row input[type=range]{flex:1;accent-color:var(--accent)}
-.sl-val{font-family:var(--mono);font-size:.78rem;color:var(--accent);width:36px;text-align:right}
+.sl-val{font-family:var(--mono);font-size:.78rem;color:var(--accent);width:42px;text-align:right}
 
 /* Btn */
 .btn{
@@ -124,6 +157,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--s
 .btn-primary{background:var(--accent);color:#000}
 .btn-primary:hover{opacity:.88}
 .btn-primary:disabled{opacity:.3;cursor:not-allowed}
+.btn-outline{background:none;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{background:var(--border)}
+.btn-danger{background:rgba(248,113,113,.12);color:var(--red);border:1px solid rgba(248,113,113,.35)}
+.btn-danger:hover{background:rgba(248,113,113,.2)}
 
 /* Error */
 #err{display:none;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);
@@ -296,13 +333,20 @@ tbody td{padding:8px 12px}
 }
 
 /* Board rotation toggle */
-.board-controls{display:flex;gap:8px;margin-bottom:12px}
+.board-controls{display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap}
 .ctrl-btn{
   padding:5px 12px;border-radius:6px;border:1px solid var(--border);
   background:none;color:var(--muted);font-size:.75rem;cursor:pointer;
 }
 .ctrl-btn:hover{background:var(--border);color:var(--text)}
 .ctrl-btn.active{background:var(--surface);color:var(--text);border-color:var(--accent2)}
+.live-pill{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:var(--mono);font-size:.68rem;color:var(--red);
+  background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);
+  border-radius:20px;padding:3px 10px;margin-left:auto;display:none;
+}
+.live-pill .live-dot{width:6px;height:6px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite}
 </style>
 </head>
 <body>
@@ -313,6 +357,7 @@ tbody td{padding:8px 12px}
   <div class="topbar-logo">♟</div>
   <div class="topbar-title">Chess Digitizer</div>
   <div class="topbar-badge">YOLO</div>
+  <div class="topbar-badge live" id="topbar-live"><span class="live-dot"></span>LIVE</div>
   <div class="topbar-spacer"></div>
   <div class="topbar-fen" id="topbar-fen" onclick="copyFen()" title="Klik untuk salin FEN">
     <span class="fen-label">FEN</span>
@@ -326,17 +371,56 @@ tbody td{padding:8px 12px}
 <div class="left">
 
   <div>
-    <div class="sec-label">Upload Gambar</div>
+    <div class="sec-label">Sumber Gambar</div>
+    <div class="mode-switch">
+      <div class="mode-btn active" id="mode-upload" onclick="setSourceMode('upload')">📁 Upload</div>
+      <div class="mode-btn" id="mode-camera" onclick="setSourceMode('camera')">📹 Kamera Live</div>
+    </div>
+  </div>
+
+  <!-- Upload mode panel -->
+  <div id="upload-panel">
     <div class="drop" id="drop">
       <input type="file" id="file-in" accept="image/*">
       <div class="drop-icon">📷</div>
       <p><strong>Klik atau drag &amp; drop</strong><br>JPG, PNG, WebP — maks 16 MB</p>
     </div>
+
+    <div id="thumb-wrap" style="margin-top:14px">
+      <img id="thumb-img" src="" alt="preview">
+      <div class="thumb-name" id="thumb-name"></div>
+    </div>
   </div>
 
-  <div id="thumb-wrap">
-    <img id="thumb-img" src="" alt="preview">
-    <div class="thumb-name" id="thumb-name"></div>
+  <!-- Camera mode panel -->
+  <div id="cam-panel" class="cam-panel">
+    <div class="cam-select-row">
+      <select id="cam-select"></select>
+      <button class="ctrl-btn" onclick="refreshCameraList()" title="Refresh daftar kamera">↻</button>
+    </div>
+
+    <div class="cam-preview-wrap">
+      <video id="cam-video" autoplay playsinline muted></video>
+      <div class="cam-status" id="cam-status">○ kamera mati</div>
+    </div>
+
+    <button class="btn btn-outline" id="cam-start-btn" onclick="toggleCamera()">▶ Mulai Kamera</button>
+
+    <div class="live-toggle-row">
+      <span class="ltl">🔴 Live Detection</span>
+      <label class="switch">
+        <input type="checkbox" id="live-toggle" disabled onchange="toggleLive()">
+        <span class="switch-slider"></span>
+      </label>
+    </div>
+
+    <div>
+      <div class="sec-label">Interval Deteksi</div>
+      <div class="slider-row">
+        <input type="range" id="interval-sl" min="300" max="3000" step="100" value="800">
+        <span class="sl-val" id="interval-val">800ms</span>
+      </div>
+    </div>
   </div>
 
   <div>
@@ -375,7 +459,7 @@ tbody td{padding:8px 12px}
   <div class="tab-content" id="tab-board">
     <div class="center-state" id="board-empty">
       <div class="big-icon">♜</div>
-      <p>Upload gambar papan catur<br>lalu klik <strong>Deteksi &amp; Digitize</strong></p>
+      <p>Upload gambar papan catur atau aktifkan kamera live,<br>lalu klik <strong>Deteksi &amp; Digitize</strong></p>
     </div>
     <div id="board-spinner" class="center-state" style="display:none">
       <div class="spinner"></div><span>Memproses…</span>
@@ -385,6 +469,7 @@ tbody td{padding:8px 12px}
       <div class="board-controls">
         <button class="ctrl-btn active" id="btn-white" onclick="setOrientation('white')">♔ Putih di bawah</button>
         <button class="ctrl-btn" id="btn-black" onclick="setOrientation('black')">♚ Hitam di bawah</button>
+        <div class="live-pill" id="board-live-pill"><span class="live-dot"></span>UPDATING LIVE</div>
       </div>
 
       <div class="board-wrap">
@@ -489,6 +574,9 @@ tbody td{padding:8px 12px}
 
 <div class="copy-toast" id="copy-toast">✓ FEN tersalin!</div>
 
+<!-- hidden canvas used to grab frames from <video> -->
+<canvas id="cam-canvas" style="display:none"></canvas>
+
 <script>
 // ── Tabs ──
 document.querySelectorAll('.tab').forEach(t => {
@@ -502,22 +590,66 @@ document.querySelectorAll('.tab').forEach(t => {
 });
 
 // ── Refs ──
-const fileIn  = document.getElementById('file-in');
-const drop    = document.getElementById('drop');
-const sl      = document.getElementById('sl');
-const slVal   = document.getElementById('sl-val');
-const detBtn  = document.getElementById('det-btn');
-const errBox  = document.getElementById('err');
+const fileIn      = document.getElementById('file-in');
+const drop        = document.getElementById('drop');
+const sl          = document.getElementById('sl');
+const slVal       = document.getElementById('sl-val');
+const detBtn      = document.getElementById('det-btn');
+const errBox      = document.getElementById('err');
 
-let selectedFile = null;
-let currentFen   = '';
-let boardData    = [];
-let orientation  = 'white'; // white | black
+const uploadPanel = document.getElementById('upload-panel');
+const camPanel    = document.getElementById('cam-panel');
+const camVideo    = document.getElementById('cam-video');
+const camCanvas   = document.getElementById('cam-canvas');
+const camSelect   = document.getElementById('cam-select');
+const camStatus   = document.getElementById('cam-status');
+const camStartBtn = document.getElementById('cam-start-btn');
+const liveToggle  = document.getElementById('live-toggle');
+const intervalSl  = document.getElementById('interval-sl');
+const intervalVal = document.getElementById('interval-val');
+const topbarLive  = document.getElementById('topbar-live');
+const boardLivePill = document.getElementById('board-live-pill');
 
-// ── Slider ──
+let selectedFile  = null;   // used in upload mode
+let currentFen    = '';
+let boardData     = [];
+let orientation   = 'white'; // white | black
+
+let sourceMode    = 'upload'; // upload | camera
+let camStream     = null;
+let liveActive    = false;
+let liveTimer     = null;
+let liveBusy      = false;   // prevents request pile-up
+
+// ══════════════════════════════
+// SOURCE MODE SWITCH
+// ══════════════════════════════
+function setSourceMode(mode) {
+  sourceMode = mode;
+  document.getElementById('mode-upload').classList.toggle('active', mode === 'upload');
+  document.getElementById('mode-camera').classList.toggle('active', mode === 'camera');
+  uploadPanel.style.display = mode === 'upload' ? 'block' : 'none';
+  camPanel.style.display    = mode === 'camera' ? 'flex'  : 'none';
+
+  if (mode === 'upload') {
+    stopLive();
+    stopCamera();
+    detBtn.disabled = !selectedFile;
+    detBtn.textContent = '🔍 Deteksi & Digitize';
+  } else {
+    detBtn.disabled = !camStream;
+    detBtn.textContent = '🔍 Deteksi Frame Sekarang';
+    refreshCameraList();
+  }
+}
+
+// ── Slider (confidence) ──
 sl.addEventListener('input', () => { slVal.textContent = parseFloat(sl.value).toFixed(2) });
 
-// ── File ──
+// ── Slider (live interval) ──
+intervalSl.addEventListener('input', () => { intervalVal.textContent = intervalSl.value + 'ms'; });
+
+// ── File (upload mode) ──
 fileIn.addEventListener('change', () => handleFile(fileIn.files[0]));
 drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('over') });
 drop.addEventListener('dragleave', () => drop.classList.remove('over'));
@@ -537,40 +669,189 @@ function handleFile(f) {
   r.readAsDataURL(f);
 }
 
-// ── Detect ──
-detBtn.addEventListener('click', async () => {
-  if (!selectedFile) return;
-  clearErr();
-  setLoading(true);
-
-  const fd = new FormData();
-  fd.append('image', selectedFile);
-
+// ══════════════════════════════
+// CAMERA
+// ══════════════════════════════
+async function refreshCameraList() {
   try {
-    const res  = await fetch(`/detect?conf=${sl.value}`, { method:'POST', body:fd });
-    const data = await res.json();
-    setLoading(false);
+    // Need permission once to get device labels
+    if (!camStream) {
+      const tmp = await navigator.mediaDevices.getUserMedia({ video: true });
+      tmp.getTracks().forEach(t => t.stop());
+    }
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const cams = devices.filter(d => d.kind === 'videoinput');
+    camSelect.innerHTML = '';
+    cams.forEach((d, i) => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId;
+      opt.textContent = d.label || `Kamera ${i + 1}`;
+      camSelect.appendChild(opt);
+    });
+    if (!cams.length) {
+      camSelect.innerHTML = '<option>Tidak ada kamera ditemukan</option>';
+    }
+  } catch (e) {
+    showErr('Tidak bisa mengakses daftar kamera: ' + e.message);
+  }
+}
 
-    if (!res.ok || !data.success) { showErr(data.error || `Error ${res.status}`); return; }
+async function toggleCamera() {
+  if (camStream) {
+    stopCamera();
+    return;
+  }
+  clearErr();
+  try {
+    const deviceId = camSelect.value;
+    const constraints = {
+      video: deviceId
+        ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }
+        : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'environment' }
+    };
+    camStream = await navigator.mediaDevices.getUserMedia(constraints);
+    camVideo.srcObject = camStream;
+    camStatus.textContent = '● kamera aktif';
+    camStatus.classList.add('on');
+    camStartBtn.textContent = '⏹ Hentikan Kamera';
+    camStartBtn.classList.add('btn-danger');
+    liveToggle.disabled = false;
+    detBtn.disabled = false;
+    refreshCameraList(); // get proper labels now that we have permission
+  } catch (e) {
+    showErr('Gagal mengakses kamera: ' + e.message);
+  }
+}
 
-    renderDetect(data);
-    renderBoard(data);
-  } catch(e) {
-    setLoading(false);
-    showErr('Gagal terhubung: ' + e.message);
+function stopCamera() {
+  stopLive();
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  camVideo.srcObject = null;
+  camStatus.textContent = '○ kamera mati';
+  camStatus.classList.remove('on');
+  camStartBtn.textContent = '▶ Mulai Kamera';
+  camStartBtn.classList.remove('btn-danger');
+  liveToggle.checked = false;
+  liveToggle.disabled = true;
+  if (sourceMode === 'camera') detBtn.disabled = true;
+}
+
+// Grab current video frame as a Blob (jpeg)
+function captureFrameBlob() {
+  return new Promise((resolve, reject) => {
+    if (!camVideo.videoWidth) { reject(new Error('Video belum siap')); return; }
+    camCanvas.width  = camVideo.videoWidth;
+    camCanvas.height = camVideo.videoHeight;
+    const ctx = camCanvas.getContext('2d');
+    ctx.drawImage(camVideo, 0, 0, camCanvas.width, camCanvas.height);
+    camCanvas.toBlob(blob => {
+      if (blob) resolve(blob); else reject(new Error('Gagal capture frame'));
+    }, 'image/jpeg', 0.85);
+  });
+}
+
+// ══════════════════════════════
+// LIVE TOGGLE
+// ══════════════════════════════
+function toggleLive() {
+  if (liveToggle.checked) startLive();
+  else stopLive();
+}
+
+function startLive() {
+  if (!camStream) { liveToggle.checked = false; return; }
+  liveActive = true;
+  topbarLive.style.display = 'inline-flex';
+  boardLivePill.style.display = 'inline-flex';
+  detBtn.disabled = true; // live loop drives detection now
+  scheduleLiveTick();
+}
+
+function stopLive() {
+  liveActive = false;
+  liveBusy = false;
+  if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+  topbarLive.style.display = 'none';
+  boardLivePill.style.display = 'none';
+  liveToggle.checked = false;
+  if (sourceMode === 'camera' && camStream) detBtn.disabled = false;
+}
+
+function scheduleLiveTick() {
+  if (!liveActive) return;
+  liveTimer = setTimeout(liveTick, parseInt(intervalSl.value, 10));
+}
+
+async function liveTick() {
+  if (!liveActive) return;
+  if (liveBusy) { scheduleLiveTick(); return; } // skip if previous request still running
+  liveBusy = true;
+  try {
+    const blob = await captureFrameBlob();
+    await runDetection(blob, { silent: true });
+  } catch (e) {
+    // don't spam errors on every tick; just log
+    console.warn('Live tick gagal:', e.message);
+  } finally {
+    liveBusy = false;
+    scheduleLiveTick();
+  }
+}
+
+// ══════════════════════════════
+// DETECT (shared for upload + camera + live)
+// ══════════════════════════════
+detBtn.addEventListener('click', async () => {
+  if (sourceMode === 'upload') {
+    if (!selectedFile) return;
+    await runDetection(selectedFile, { silent: false });
+  } else {
+    try {
+      const blob = await captureFrameBlob();
+      await runDetection(blob, { silent: false });
+    } catch (e) {
+      showErr(e.message);
+    }
   }
 });
 
+async function runDetection(fileOrBlob, opts = {}) {
+  const silent = !!opts.silent;
+  clearErr();
+  if (!silent) setLoading(true);
+
+  const fd = new FormData();
+  fd.append('image', fileOrBlob, 'frame.jpg');
+
+  try {
+    const res  = await fetch(`/detect?conf=${sl.value}`, { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!silent) setLoading(false);
+
+    if (!res.ok || !data.success) {
+      if (!silent) showErr(data.error || `Error ${res.status}`);
+      return;
+    }
+
+    renderDetect(data);
+    renderBoard(data);
+  } catch (e) {
+    if (!silent) { setLoading(false); showErr('Gagal terhubung: ' + e.message); }
+  }
+}
+
 function setLoading(on) {
-  detBtn.disabled = on;
+  detBtn.disabled = on || (sourceMode === 'camera' && !camStream) || liveActive;
   // board tab
-  document.getElementById('board-empty').style.display   = on ? 'none' : 'none';
+  document.getElementById('board-empty').style.display   = 'none';
   document.getElementById('board-spinner').style.display = on ? 'flex' : 'none';
-  document.getElementById('board-result').style.display  = on ? 'none' : 'none';
+  document.getElementById('board-result').style.display  = on ? 'none' : (boardData.length || currentFen ? 'block' : 'none');
   // detect tab
-  document.getElementById('det-empty').style.display     = on ? 'none' : 'none';
+  document.getElementById('det-empty').style.display     = 'none';
   document.getElementById('det-spinner').style.display   = on ? 'flex' : 'none';
-  document.getElementById('det-result').style.display    = on ? 'none' : 'none';
 }
 
 // ══════════════════════════════
@@ -707,7 +988,6 @@ function drawBoard() {
 
   const sqSize = 400 / 8; // px
 
-  // Row order: white=0..7 top (rank8→rank1), black=7..0 top (rank1→rank8)
   const rowOrder = orientation === 'white'
     ? [0,1,2,3,4,5,6,7]
     : [7,6,5,4,3,2,1,0];
@@ -754,7 +1034,6 @@ function drawBoard() {
         sq.appendChild(pSpan);
         sq.appendChild(confSpan);
 
-        // Tooltip
         sq.title = `${piece.label} — ${(piece.confidence*100).toFixed(1)}%\n${FILES[c]}${RANKS[r]}`;
       }
 
@@ -776,14 +1055,14 @@ function copyFen() {
 function showErr(msg) {
   errBox.textContent = '⚠ ' + msg;
   errBox.style.display = 'block';
-  setLoading(false);
-  document.getElementById('board-empty').style.display = 'flex';
-  document.getElementById('det-empty').style.display   = 'flex';
 }
 function clearErr() {
   errBox.textContent = '';
   errBox.style.display = 'none';
 }
+
+// Stop camera/live cleanly when leaving the page
+window.addEventListener('beforeunload', () => { stopLive(); stopCamera(); });
 </script>
 </body>
 </html>
