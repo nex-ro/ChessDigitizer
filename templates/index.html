@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chess Digitizer — YOLO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #0b0d12;
+  --panel:    #12151e;
+  --surface:  #1a1f2e;
+  --border:   #252d3d;
+  --border2:  #1e2535;
+  --accent:   #34d399;
+  --accent2:  #818cf8;
+  --gold:     #fbbf24;
+  --red:      #f87171;
+  --text:     #e2e8f0;
+  --muted:    #64748b;
+  --sq-light: #f0d9b5;
+  --sq-dark:  #b58863;
+  --r: 10px;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'Inter', system-ui, sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans)}
+
+/* ── APP SHELL ── */
+.app{display:grid;grid-template-rows:56px 1fr;height:100vh;overflow:hidden}
+
+/* ── TOPBAR ── */
+.topbar{
+  display:flex;align-items:center;gap:12px;
+  padding:0 24px;
+  border-bottom:1px solid var(--border);
+  background:var(--panel);
+  z-index:10;
+}
+.topbar-logo{font-size:22px}
+.topbar-title{font-weight:700;font-size:1rem;letter-spacing:-.3px}
+.topbar-badge{
+  font-family:var(--mono);font-size:.65rem;
+  background:var(--border);color:var(--muted);
+  padding:2px 8px;border-radius:20px;margin-left:2px;
+}
+.topbar-spacer{flex:1}
+.topbar-fen{
+  display:none;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:.72rem;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;padding:5px 10px;max-width:420px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--accent2);cursor:pointer;
+  transition:background .15s;
+}
+.topbar-fen:hover{background:var(--border)}
+.fen-label{color:var(--muted);font-size:.62rem;white-space:nowrap}
+.copy-toast{
+  position:fixed;top:16px;right:16px;z-index:999;
+  background:var(--accent);color:#000;
+  font-size:.8rem;font-weight:600;
+  padding:8px 16px;border-radius:6px;
+  opacity:0;transform:translateY(-8px);
+  transition:opacity .2s,transform .2s;
+  pointer-events:none;
+}
+.copy-toast.show{opacity:1;transform:translateY(0)}
+
+/* ── MAIN LAYOUT ── */
+.main{display:grid;grid-template-columns:320px 1fr;overflow:hidden}
+
+/* ── LEFT PANEL ── */
+.left{
+  border-right:1px solid var(--border);
+  background:var(--panel);
+  display:flex;flex-direction:column;
+  overflow-y:auto;
+  padding:20px 18px;
+  gap:18px;
+}
+
+.sec-label{
+  font-size:.65rem;font-weight:600;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:8px;
+}
+
+/* Drop zone */
+.drop{
+  border:2px dashed var(--border);border-radius:var(--r);
+  padding:28px 16px;text-align:center;cursor:pointer;
+  transition:border-color .2s,background .2s;position:relative;
+}
+.drop:hover,.drop.over{border-color:var(--accent);background:rgba(52,211,153,.04)}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop-icon{font-size:2rem;margin-bottom:8px}
+.drop p{color:var(--muted);font-size:.8rem;line-height:1.5}
+.drop strong{color:var(--text)}
+
+/* Thumb */
+#thumb-wrap{display:none;border-radius:8px;overflow:hidden;border:1px solid var(--border);position:relative}
+#thumb-img{width:100%;display:block;max-height:180px;object-fit:contain;background:#000}
+.thumb-name{
+  position:absolute;bottom:0;left:0;right:0;
+  font-size:.68rem;color:var(--muted);
+  background:rgba(0,0,0,.7);padding:3px 8px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* Slider */
+.slider-row{display:flex;align-items:center;gap:10px}
+.slider-row input[type=range]{flex:1;accent-color:var(--accent)}
+.sl-val{font-family:var(--mono);font-size:.78rem;color:var(--accent);width:36px;text-align:right}
+
+/* Btn */
+.btn{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  padding:11px;border-radius:8px;font-size:.88rem;font-weight:600;
+  cursor:pointer;border:none;transition:opacity .15s,transform .1s;width:100%;
+}
+.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--accent);color:#000}
+.btn-primary:hover{opacity:.88}
+.btn-primary:disabled{opacity:.3;cursor:not-allowed}
+
+/* Error */
+#err{display:none;background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.35);
+  border-radius:8px;padding:10px 14px;color:var(--red);font-size:.8rem}
+
+/* Classes */
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-family:var(--mono);font-size:.67rem;padding:3px 8px;border-radius:20px;background:var(--border);color:var(--text)}
+
+/* ── RIGHT PANEL ── */
+.right{display:flex;flex-direction:column;overflow:hidden}
+
+/* Tabs */
+.tabs{
+  display:flex;border-bottom:1px solid var(--border);
+  background:var(--panel);flex-shrink:0;
+}
+.tab{
+  padding:12px 20px;font-size:.82rem;font-weight:500;
+  cursor:pointer;border-bottom:2px solid transparent;
+  color:var(--muted);transition:color .15s,border-color .15s;
+  white-space:nowrap;
+}
+.tab.active{color:var(--text);border-bottom-color:var(--accent)}
+.tab:hover:not(.active){color:var(--text)}
+
+.tab-content{flex:1;overflow-y:auto;padding:24px}
+
+/* ── EMPTY / SPINNER ── */
+.center-state{
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:14px;height:100%;
+  color:var(--muted);text-align:center;
+}
+.big-icon{font-size:3.5rem;opacity:.25}
+.spinner{width:36px;height:36px;border:3px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ── DETECT TAB ── */
+.stats-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px}
+.stat .v{font-size:1.6rem;font-weight:700;font-family:var(--mono);color:var(--accent);line-height:1;margin-bottom:3px}
+.stat .l{font-size:.68rem;color:var(--muted)}
+
+.img-pair{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px}
+.img-box{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.img-head{padding:7px 12px;font-size:.68rem;color:var(--muted);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:6px}
+.dot{width:7px;height:7px;border-radius:50%}
+.img-box img{width:100%;display:block;max-height:280px;object-fit:contain;background:#000}
+
+.dl-link{
+  display:inline-flex;align-items:center;gap:6px;
+  font-size:.75rem;color:var(--accent2);
+  background:none;border:1px solid var(--border);border-radius:6px;
+  padding:5px 10px;cursor:pointer;text-decoration:none;margin-top:8px;
+}
+.dl-link:hover{background:var(--border)}
+
+.counts{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:20px}
+.count-badge{
+  display:flex;align-items:center;gap:6px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:20px;padding:4px 12px;font-size:.78rem;
+}
+.count-badge .cn{font-family:var(--mono);font-weight:700;font-size:.88rem;color:var(--accent)}
+
+.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+table{width:100%;border-collapse:collapse;font-size:.8rem}
+thead th{
+  background:var(--border);padding:8px 12px;text-align:left;
+  font-size:.65rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+}
+tbody tr{border-top:1px solid var(--border2)}
+tbody tr:hover{background:rgba(255,255,255,.02)}
+tbody td{padding:8px 12px}
+.lbl-pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.75rem}
+.lbl-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.cbar-wrap{display:flex;align-items:center;gap:7px}
+.cbar{height:5px;border-radius:3px;background:var(--accent);min-width:3px}
+.ctext{font-family:var(--mono);font-size:.75rem;color:var(--muted)}
+.bbox-t{font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+
+/* ── BOARD TAB ── */
+.board-wrap{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+
+/* Chess board */
+.chess-outer{flex-shrink:0}
+.board-coords-wrap{display:inline-flex;flex-direction:column}
+.board-row-labels{display:flex;flex-direction:column;float:left;margin-right:6px}
+.coord-label{
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);
+  display:flex;align-items:center;justify-content:center;
+}
+.board-col-labels{display:flex;margin-left:28px;margin-top:4px}
+
+.chess-board{
+  display:grid;grid-template-columns:repeat(8,1fr);
+  border:2px solid #8B6914;border-radius:4px;overflow:hidden;
+  box-shadow:0 0 0 1px #5a4310,0 8px 32px rgba(0,0,0,.6);
+  width:400px;height:400px;flex-shrink:0;
+}
+.sq{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  font-size:2.1rem;line-height:1;cursor:default;
+  transition:background .15s;
+}
+.sq.light{background:var(--sq-light)}
+.sq.dark{background:var(--sq-dark)}
+.sq.highlight{outline:3px solid var(--accent);outline-offset:-3px;z-index:2}
+.sq .piece{
+  position:relative;z-index:1;
+  filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));
+  user-select:none;line-height:1;
+}
+.sq .piece.white-piece{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000}
+.sq .piece.black-piece{color:#1a1a1a;text-shadow:0 0 2px rgba(255,255,255,.3)}
+.sq .conf-tip{
+  position:absolute;bottom:1px;right:2px;
+  font-family:var(--mono);font-size:.5rem;
+  color:rgba(0,0,0,.55);line-height:1;
+}
+.sq.light .conf-tip{color:rgba(0,0,0,.4)}
+.sq.dark .conf-tip{color:rgba(255,255,255,.5)}
+
+/* Legend / info beside board */
+.board-info{flex:1;min-width:220px;display:flex;flex-direction:column;gap:14px}
+.board-stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px}
+.board-stat .bv{font-size:1.4rem;font-weight:700;font-family:var(--mono);color:var(--accent);line-height:1;margin-bottom:3px}
+.board-stat .bl{font-size:.68rem;color:var(--muted)}
+
+.piece-legend{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.legend-row{
+  display:flex;align-items:center;gap:8px;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:6px;padding:7px 10px;
+}
+.legend-sym{font-size:1.4rem;line-height:1;width:24px;text-align:center}
+.legend-info{display:flex;flex-direction:column;gap:1px}
+.legend-name{font-size:.75rem;font-weight:500}
+.legend-cnt{font-family:var(--mono);font-size:.68rem;color:var(--muted)}
+
+/* FEN display */
+.fen-box{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:8px;padding:12px;
+}
+.fen-string{
+  font-family:var(--mono);font-size:.72rem;
+  color:var(--accent2);word-break:break-all;line-height:1.6;
+  margin-top:6px;
+}
+.fen-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.fen-btn{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:.73rem;padding:5px 10px;border-radius:6px;
+  border:1px solid var(--border);background:none;
+  color:var(--text);cursor:pointer;text-decoration:none;
+}
+.fen-btn:hover{background:var(--border)}
+.fen-btn.primary-btn{background:var(--accent);color:#000;border-color:var(--accent)}
+.fen-btn.primary-btn:hover{opacity:.85}
+
+/* Unrecognized pieces */
+.unrecog{
+  background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.25);
+  border-radius:8px;padding:10px 14px;font-size:.78rem;color:var(--gold);
+}
+
+/* Board rotation toggle */
+.board-controls{display:flex;gap:8px;margin-bottom:12px}
+.ctrl-btn{
+  padding:5px 12px;border-radius:6px;border:1px solid var(--border);
+  background:none;color:var(--muted);font-size:.75rem;cursor:pointer;
+}
+.ctrl-btn:hover{background:var(--border);color:var(--text)}
+.ctrl-btn.active{background:var(--surface);color:var(--text);border-color:var(--accent2)}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ── TOPBAR ── -->
+<div class="topbar">
+  <div class="topbar-logo">♟</div>
+  <div class="topbar-title">Chess Digitizer</div>
+  <div class="topbar-badge">YOLO</div>
+  <div class="topbar-spacer"></div>
+  <div class="topbar-fen" id="topbar-fen" onclick="copyFen()" title="Klik untuk salin FEN">
+    <span class="fen-label">FEN</span>
+    <span id="topbar-fen-text">—</span>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ═══ LEFT ═══ -->
+<div class="left">
+
+  <div>
+    <div class="sec-label">Upload Gambar</div>
+    <div class="drop" id="drop">
+      <input type="file" id="file-in" accept="image/*">
+      <div class="drop-icon">📷</div>
+      <p><strong>Klik atau drag &amp; drop</strong><br>JPG, PNG, WebP — maks 16 MB</p>
+    </div>
+  </div>
+
+  <div id="thumb-wrap">
+    <img id="thumb-img" src="" alt="preview">
+    <div class="thumb-name" id="thumb-name"></div>
+  </div>
+
+  <div>
+    <div class="sec-label">Confidence Threshold</div>
+    <div class="slider-row">
+      <input type="range" id="sl" min="0.05" max="0.95" step="0.05" value="0.35">
+      <span class="sl-val" id="sl-val">0.35</span>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="det-btn" disabled>
+    🔍 Deteksi &amp; Digitize
+  </button>
+
+  <div id="err"></div>
+
+  <div>
+    <div class="sec-label">Kelas Model ({{ classes|length }})</div>
+    <div class="chips">
+      {% for c in classes %}<span class="chip">{{ c }}</span>{% endfor %}
+    </div>
+  </div>
+
+</div><!-- /left -->
+
+<!-- ═══ RIGHT ═══ -->
+<div class="right">
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="board">♟ Papan Digital</div>
+    <div class="tab" data-tab="detect">🔍 Hasil Deteksi</div>
+  </div>
+
+  <!-- Tab: Board -->
+  <div class="tab-content" id="tab-board">
+    <div class="center-state" id="board-empty">
+      <div class="big-icon">♜</div>
+      <p>Upload gambar papan catur<br>lalu klik <strong>Deteksi &amp; Digitize</strong></p>
+    </div>
+    <div id="board-spinner" class="center-state" style="display:none">
+      <div class="spinner"></div><span>Memproses…</span>
+    </div>
+    <div id="board-result" style="display:none">
+
+      <div class="board-controls">
+        <button class="ctrl-btn active" id="btn-white" onclick="setOrientation('white')">♔ Putih di bawah</button>
+        <button class="ctrl-btn" id="btn-black" onclick="setOrientation('black')">♚ Hitam di bawah</button>
+      </div>
+
+      <div class="board-wrap">
+
+        <!-- Chess board -->
+        <div class="chess-outer">
+          <div style="display:flex">
+            <div id="row-labels" style="display:flex;flex-direction:column;margin-right:6px;width:18px"></div>
+            <div id="chess-board" class="chess-board"></div>
+          </div>
+          <div id="col-labels" style="display:flex;padding-left:24px;margin-top:4px"></div>
+        </div>
+
+        <!-- Info panel -->
+        <div class="board-info">
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="board-stat">
+              <div class="bv" id="bs-pieces">—</div>
+              <div class="bl">Total Buah</div>
+            </div>
+            <div class="board-stat">
+              <div class="bv" id="bs-white">—</div>
+              <div class="bl">Putih</div>
+            </div>
+            <div class="board-stat">
+              <div class="bv" id="bs-black">—</div>
+              <div class="bl">Hitam</div>
+            </div>
+            <div class="board-stat">
+              <div class="bv" id="bs-unrecog">—</div>
+              <div class="bl">Tidak Dikenali</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="sec-label">Komposisi Buah</div>
+            <div class="piece-legend" id="piece-legend"></div>
+          </div>
+
+          <div class="fen-box">
+            <div class="sec-label">FEN String</div>
+            <div class="fen-string" id="fen-display">—</div>
+            <div class="fen-actions">
+              <button class="fen-btn primary-btn" onclick="copyFen()">📋 Salin FEN</button>
+              <a class="fen-btn" id="lichess-link" href="#" target="_blank">♟ Buka di Lichess</a>
+              <a class="fen-btn" id="analysis-link" href="#" target="_blank">🔍 Analisis</a>
+            </div>
+          </div>
+
+          <div id="unrecog-warn" class="unrecog" style="display:none">
+            ⚠ Beberapa buah tidak dikenali (label "?"). Sesuaikan PIECE_MAP di <code>app.py</code> dengan nama kelas model Anda.
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Detect -->
+  <div class="tab-content" id="tab-detect" style="display:none">
+    <div class="center-state" id="det-empty">
+      <div class="big-icon">🔍</div>
+      <p>Jalankan deteksi terlebih dahulu</p>
+    </div>
+    <div id="det-spinner" class="center-state" style="display:none">
+      <div class="spinner"></div><span>Inferensi…</span>
+    </div>
+    <div id="det-result" style="display:none">
+      <div class="stats-row">
+        <div class="stat"><div class="v" id="s-total">—</div><div class="l">Deteksi</div></div>
+        <div class="stat"><div class="v" id="s-cls">—</div><div class="l">Kelas</div></div>
+        <div class="stat"><div class="v" id="s-conf">—</div><div class="l">Conf Maks</div></div>
+      </div>
+      <div class="sec-label">Jumlah per Kelas</div>
+      <div class="counts" id="counts"></div>
+      <div class="sec-label" style="margin-bottom:8px">Visualisasi</div>
+      <div class="img-pair">
+        <div class="img-box">
+          <div class="img-head"><div class="dot" style="background:#64748b"></div>Original</div>
+          <img id="img-ori" src="" alt="original">
+        </div>
+        <div class="img-box">
+          <div class="img-head"><div class="dot" style="background:#34d399"></div>Annotated</div>
+          <img id="img-ann" src="" alt="annotated">
+        </div>
+      </div>
+      <a class="dl-link" id="dl-btn" download="chess_detection.jpg">↓ Download Hasil</a>
+      <div class="sec-label" style="margin-top:16px;margin-bottom:8px">Detail Deteksi</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>Label</th><th>Confidence</th><th>BBox</th></tr></thead>
+          <tbody id="det-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /right -->
+</div><!-- /main -->
+</div><!-- /app -->
+
+<div class="copy-toast" id="copy-toast">✓ FEN tersalin!</div>
+
+<script>
+// ── Tabs ──
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    const name = t.dataset.tab;
+    document.getElementById('tab-board').style.display  = name === 'board'  ? 'block' : 'none';
+    document.getElementById('tab-detect').style.display = name === 'detect' ? 'block' : 'none';
+  });
+});
+
+// ── Refs ──
+const fileIn  = document.getElementById('file-in');
+const drop    = document.getElementById('drop');
+const sl      = document.getElementById('sl');
+const slVal   = document.getElementById('sl-val');
+const detBtn  = document.getElementById('det-btn');
+const errBox  = document.getElementById('err');
+
+let selectedFile = null;
+let currentFen   = '';
+let boardData    = [];
+let orientation  = 'white'; // white | black
+
+// ── Slider ──
+sl.addEventListener('input', () => { slVal.textContent = parseFloat(sl.value).toFixed(2) });
+
+// ── File ──
+fileIn.addEventListener('change', () => handleFile(fileIn.files[0]));
+drop.addEventListener('dragover',  e => { e.preventDefault(); drop.classList.add('over') });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('over'); handleFile(e.dataTransfer.files[0]) });
+
+function handleFile(f) {
+  if (!f) return;
+  selectedFile = f;
+  detBtn.disabled = false;
+  clearErr();
+  const r = new FileReader();
+  r.onload = e => {
+    document.getElementById('thumb-img').src = e.target.result;
+    document.getElementById('thumb-name').textContent = f.name;
+    document.getElementById('thumb-wrap').style.display = 'block';
+  };
+  r.readAsDataURL(f);
+}
+
+// ── Detect ──
+detBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  clearErr();
+  setLoading(true);
+
+  const fd = new FormData();
+  fd.append('image', selectedFile);
+
+  try {
+    const res  = await fetch(`/detect?conf=${sl.value}`, { method:'POST', body:fd });
+    const data = await res.json();
+    setLoading(false);
+
+    if (!res.ok || !data.success) { showErr(data.error || `Error ${res.status}`); return; }
+
+    renderDetect(data);
+    renderBoard(data);
+  } catch(e) {
+    setLoading(false);
+    showErr('Gagal terhubung: ' + e.message);
+  }
+});
+
+function setLoading(on) {
+  detBtn.disabled = on;
+  // board tab
+  document.getElementById('board-empty').style.display   = on ? 'none' : 'none';
+  document.getElementById('board-spinner').style.display = on ? 'flex' : 'none';
+  document.getElementById('board-result').style.display  = on ? 'none' : 'none';
+  // detect tab
+  document.getElementById('det-empty').style.display     = on ? 'none' : 'none';
+  document.getElementById('det-spinner').style.display   = on ? 'flex' : 'none';
+  document.getElementById('det-result').style.display    = on ? 'none' : 'none';
+}
+
+// ══════════════════════════════
+// RENDER DETECT TAB
+// ══════════════════════════════
+function renderDetect(d) {
+  document.getElementById('s-total').textContent = d.total_detections;
+  document.getElementById('s-cls').textContent   = Object.keys(d.counts).length;
+  const maxC = d.detections.length ? Math.max(...d.detections.map(x=>x.confidence)) : 0;
+  document.getElementById('s-conf').textContent  = d.detections.length ? (maxC*100).toFixed(0)+'%' : '—';
+
+  // counts badges
+  const cw = document.getElementById('counts');
+  cw.innerHTML = '';
+  Object.entries(d.counts).sort((a,b)=>b[1]-a[1]).forEach(([lbl,cnt]) => {
+    const col = (d.detections.find(x=>x.label===lbl)||{}).color||'#64748b';
+    cw.innerHTML += `<div class="count-badge">
+      <div class="lbl-dot" style="background:${col}"></div>
+      <span>${lbl}</span><span class="cn">${cnt}</span>
+    </div>`;
+  });
+
+  // images
+  const ori = 'data:image/jpeg;base64,' + d.image_original;
+  const ann = 'data:image/jpeg;base64,' + d.image_annotated;
+  document.getElementById('img-ori').src = ori;
+  document.getElementById('img-ann').src = ann;
+  document.getElementById('dl-btn').href = ann;
+
+  // table
+  const tb = document.getElementById('det-tbody');
+  tb.innerHTML = '';
+  if (!d.detections.length) {
+    tb.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:16px">
+      Tidak ada objek — coba turunkan threshold</td></tr>`;
+  } else {
+    d.detections.forEach((det,i) => {
+      const [x1,y1,x2,y2] = det.bbox;
+      tb.innerHTML += `<tr>
+        <td style="color:var(--muted)">${i+1}</td>
+        <td><div class="lbl-pill">
+          <div class="lbl-dot" style="background:${det.color}"></div>${det.label}
+        </div></td>
+        <td><div class="cbar-wrap">
+          <div class="cbar" style="width:${Math.round(det.confidence*80)}px"></div>
+          <span class="ctext">${(det.confidence*100).toFixed(1)}%</span>
+        </div></td>
+        <td><span class="bbox-t">[${x1},${y1},${x2},${y2}]</span></td>
+      </tr>`;
+    });
+  }
+
+  document.getElementById('det-empty').style.display   = 'none';
+  document.getElementById('det-spinner').style.display = 'none';
+  document.getElementById('det-result').style.display  = 'block';
+}
+
+// ══════════════════════════════
+// RENDER BOARD TAB
+// ══════════════════════════════
+function renderBoard(d) {
+  boardData  = d.board;
+  currentFen = d.fen;
+
+  // topbar fen
+  const tf = document.getElementById('topbar-fen');
+  tf.style.display = 'flex';
+  document.getElementById('topbar-fen-text').textContent = d.fen;
+
+  // fen box
+  document.getElementById('fen-display').textContent = d.fen;
+
+  // lichess links
+  const fenEnc = encodeURIComponent(d.fen);
+  document.getElementById('lichess-link').href  = `https://lichess.org/editor?fen=${fenEnc}`;
+  document.getElementById('analysis-link').href = `https://lichess.org/analysis?fen=${fenEnc}`;
+
+  // stats
+  const whites    = d.board.filter(p => p.side === 'white').length;
+  const blacks    = d.board.filter(p => p.side === 'black').length;
+  const unrecog   = d.board.filter(p => p.fen === '?').length;
+  document.getElementById('bs-pieces').textContent  = d.board.length;
+  document.getElementById('bs-white').textContent   = whites;
+  document.getElementById('bs-black').textContent   = blacks;
+  document.getElementById('bs-unrecog').textContent = unrecog;
+
+  if (unrecog > 0) document.getElementById('unrecog-warn').style.display = 'block';
+  else             document.getElementById('unrecog-warn').style.display = 'none';
+
+  // piece legend
+  const counts = {};
+  d.board.forEach(p => { counts[p.unicode] = (counts[p.unicode]||{count:0,label:p.label}); counts[p.unicode].count++ });
+  const leg = document.getElementById('piece-legend');
+  leg.innerHTML = '';
+  Object.entries(counts).forEach(([sym, info]) => {
+    leg.innerHTML += `<div class="legend-row">
+      <div class="legend-sym">${sym}</div>
+      <div class="legend-info">
+        <div class="legend-name">${info.label}</div>
+        <div class="legend-cnt">×${info.count}</div>
+      </div>
+    </div>`;
+  });
+
+  // draw board
+  drawBoard();
+
+  document.getElementById('board-empty').style.display   = 'none';
+  document.getElementById('board-spinner').style.display = 'none';
+  document.getElementById('board-result').style.display  = 'block';
+}
+
+const FILES = ['a','b','c','d','e','f','g','h'];
+const RANKS = ['8','7','6','5','4','3','2','1'];
+
+function setOrientation(side) {
+  orientation = side;
+  document.getElementById('btn-white').classList.toggle('active', side==='white');
+  document.getElementById('btn-black').classList.toggle('active', side==='black');
+  drawBoard();
+}
+
+function drawBoard() {
+  const board = document.getElementById('chess-board');
+  const rowLbl = document.getElementById('row-labels');
+  const colLbl = document.getElementById('col-labels');
+  board.innerHTML = '';
+  rowLbl.innerHTML = '';
+  colLbl.innerHTML = '';
+
+  // Build lookup: "col,row" → piece
+  const lookup = {};
+  boardData.forEach(p => { lookup[`${p.col},${p.row}`] = p });
+
+  const sqSize = 400 / 8; // px
+
+  // Row order: white=0..7 top (rank8→rank1), black=7..0 top (rank1→rank8)
+  const rowOrder = orientation === 'white'
+    ? [0,1,2,3,4,5,6,7]
+    : [7,6,5,4,3,2,1,0];
+  const colOrder = orientation === 'white'
+    ? [0,1,2,3,4,5,6,7]
+    : [7,6,5,4,3,2,1,0];
+
+  // Row labels (ranks)
+  rowOrder.forEach(r => {
+    const rank = RANKS[r];
+    const lbl = document.createElement('div');
+    lbl.className = 'coord-label';
+    lbl.style.height = sqSize + 'px';
+    lbl.style.fontSize = '.65rem';
+    lbl.style.color = 'var(--muted)';
+    lbl.textContent = rank;
+    rowLbl.appendChild(lbl);
+  });
+
+  // Col labels (files)
+  colOrder.forEach(c => {
+    const lbl = document.createElement('div');
+    lbl.style.cssText = `width:${sqSize}px;text-align:center;font-family:var(--mono);font-size:.65rem;color:var(--muted)`;
+    lbl.textContent = FILES[c];
+    colLbl.appendChild(lbl);
+  });
+
+  // Squares
+  rowOrder.forEach(r => {
+    colOrder.forEach(c => {
+      const sq = document.createElement('div');
+      const isLight = (r + c) % 2 === 0;
+      sq.className = 'sq ' + (isLight ? 'light' : 'dark');
+
+      const piece = lookup[`${c},${r}`];
+      if (piece) {
+        sq.classList.add('highlight');
+        const pSpan = document.createElement('span');
+        pSpan.className = 'piece ' + (piece.side === 'white' ? 'white-piece' : 'black-piece');
+        pSpan.textContent = piece.unicode;
+        const confSpan = document.createElement('span');
+        confSpan.className = 'conf-tip';
+        confSpan.textContent = (piece.confidence * 100).toFixed(0) + '%';
+        sq.appendChild(pSpan);
+        sq.appendChild(confSpan);
+
+        // Tooltip
+        sq.title = `${piece.label} — ${(piece.confidence*100).toFixed(1)}%\n${FILES[c]}${RANKS[r]}`;
+      }
+
+      board.appendChild(sq);
+    });
+  });
+}
+
+// ── FEN copy ──
+function copyFen() {
+  if (!currentFen) return;
+  navigator.clipboard.writeText(currentFen).then(() => {
+    const t = document.getElementById('copy-toast');
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 1800);
+  });
+}
+
+function showErr(msg) {
+  errBox.textContent = '⚠ ' + msg;
+  errBox.style.display = 'block';
+  setLoading(false);
+  document.getElementById('board-empty').style.display = 'flex';
+  document.getElementById('det-empty').style.display   = 'flex';
+}
+function clearErr() {
+  errBox.textContent = '';
+  errBox.style.display = 'none';
+}
+</script>
+</body>
+</html>
