@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Chess Board Overlay — OBS</title>
+<style>
+  :root {
+    --sq-light: #f0d9b5;
+    --sq-dark:  #b58863;
+  }
+  html, body {
+    margin: 0; padding: 0;
+    background: transparent;     /* transparan -> cocok buat overlay OBS */
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Board sama persis dengan index.html ── */
+  .chess-outer { display:flex; flex-direction:column; align-items:flex-start; }
+  .board-with-labels { display:flex; }
+  #row-labels { display:flex; flex-direction:column; margin-right:6px; width:18px; }
+  .coord-label {
+    font-family:'JetBrains Mono',monospace; font-size:.65rem; color:#9aa4b5;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #col-labels { display:flex; padding-left:24px; margin-top:4px; }
+  .col-label {
+    text-align:center; font-family:'JetBrains Mono',monospace;
+    font-size:.65rem; color:#9aa4b5;
+  }
+
+  .chess-board{
+    display:grid;grid-template-columns:repeat(8,1fr);
+    border:2px solid #8B6914;border-radius:4px;overflow:hidden;
+    box-shadow:0 0 0 1px #5a4310,0 8px 32px rgba(0,0,0,.6);
+    width:480px;height:480px;flex-shrink:0;
+  }
+  .sq{
+    position:relative;display:flex;align-items:center;justify-content:center;
+    font-size:2.5rem;line-height:1;cursor:default;
+  }
+  .sq.light{background:var(--sq-light)}
+  .sq.dark{background:var(--sq-dark)}
+  .sq .piece{
+    position:relative;z-index:1;
+    filter:drop-shadow(0 2px 3px rgba(0,0,0,.55));
+    user-select:none;line-height:1;
+  }
+  .sq .piece.white-piece{color:#fff;text-shadow:0 0 2px #000,0 0 2px #000}
+  .sq .piece.black-piece{color:#1a1a1a;text-shadow:0 0 2px rgba(255,255,255,.3)}
+  .sq .conf-tip{
+    position:absolute;bottom:1px;right:2px;
+    font-family:'JetBrains Mono',monospace;font-size:.55rem;
+    color:rgba(0,0,0,.55);line-height:1;
+  }
+  .sq.light .conf-tip{color:rgba(0,0,0,.4)}
+  .sq.dark .conf-tip{color:rgba(255,255,255,.5)}
+</style>
+</head>
+<body>
+
+  <div class="chess-outer">
+    <div class="board-with-labels">
+      <div id="row-labels"></div>
+      <div id="chess-board" class="chess-board"></div>
+    </div>
+    <div id="col-labels"></div>
+  </div>
+
+<script>
+// Konfigurasi orientasi papan: 'white' (putih di bawah) atau 'black'
+const ORIENTATION = 'white';
+// Interval polling state papan (ms). Samakan / lebih cepat dari interval live-detection.
+const REFRESH_MS = 800;
+
+const FILES = ['a','b','c','d','e','f','g','h'];
+const RANKS = ['8','7','6','5','4','3','2','1'];
+
+let boardData = [];
+
+function drawBoard() {
+  const board  = document.getElementById('chess-board');
+  const rowLbl = document.getElementById('row-labels');
+  const colLbl = document.getElementById('col-labels');
+  board.innerHTML = '';
+  rowLbl.innerHTML = '';
+  colLbl.innerHTML = '';
+
+  const lookup = {};
+  boardData.forEach(p => { lookup[`${p.col},${p.row}`] = p; });
+
+  const sqSize = 480 / 8;
+
+  const rowOrder = ORIENTATION === 'white' ? [0,1,2,3,4,5,6,7] : [7,6,5,4,3,2,1,0];
+  const colOrder = ORIENTATION === 'white' ? [0,1,2,3,4,5,6,7] : [7,6,5,4,3,2,1,0];
+
+  rowOrder.forEach(r => {
+    const lbl = document.createElement('div');
+    lbl.className = 'coord-label';
+    lbl.style.height = sqSize + 'px';
+    lbl.textContent = RANKS[r];
+    rowLbl.appendChild(lbl);
+  });
+
+  colOrder.forEach(c => {
+    const lbl = document.createElement('div');
+    lbl.className = 'col-label';
+    lbl.style.width = sqSize + 'px';
+    lbl.textContent = FILES[c];
+    colLbl.appendChild(lbl);
+  });
+
+  rowOrder.forEach(r => {
+    colOrder.forEach(c => {
+      const sq = document.createElement('div');
+      const isLight = (r + c) % 2 === 0;
+      sq.className = 'sq ' + (isLight ? 'light' : 'dark');
+
+      const piece = lookup[`${c},${r}`];
+      if (piece) {
+        const pSpan = document.createElement('span');
+        pSpan.className = 'piece ' + (piece.side === 'white' ? 'white-piece' : 'black-piece');
+        pSpan.textContent = piece.unicode;
+
+        const confSpan = document.createElement('span');
+        confSpan.className = 'conf-tip';
+        confSpan.textContent = (piece.confidence * 100).toFixed(0) + '%';
+
+        sq.appendChild(pSpan);
+        sq.appendChild(confSpan);
+      }
+      board.appendChild(sq);
+    });
+  });
+}
+
+async function refresh() {
+  try {
+    const res  = await fetch('/api/board?t=' + Date.now(), { cache: 'no-store' });
+    const data = await res.json();
+    boardData = data.board || [];
+    drawBoard();
+  } catch (e) {
+    console.warn('Gagal ambil state papan:', e.message);
+  }
+}
+
+refresh();
+setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>

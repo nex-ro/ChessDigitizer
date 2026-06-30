@@ -2,9 +2,11 @@ import os
 import io
 import base64
 import json
+import time
+import threading
 from pathlib import Path
 
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file, Response
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import cv2
@@ -29,6 +31,32 @@ CLASS_NAMES = model.names
 print(f"[✓] Model: {MODEL_PATH}  |  Classes: {CLASS_NAMES}")
 
 # ──────────────────────────────────────────────
+# STATE TERBARU UNTUK OVERLAY / API (dipakai OBS Browser Source)
+# ──────────────────────────────────────────────
+LATEST_LOCK = threading.Lock()
+LATEST = {
+    "board_png": None,   # bytes PNG papan digital terbaru
+    "fen": None,
+    "board": [],
+    "counts": {},
+    "total_detections": 0,
+    "updated_at": 0,      # epoch seconds, dipakai client utk polling/refresh
+}
+
+def set_latest(board_png_bytes, fen, board_list, counts, total):
+    with LATEST_LOCK:
+        LATEST["board_png"] = board_png_bytes
+        LATEST["fen"] = fen
+        LATEST["board"] = board_list
+        LATEST["counts"] = counts
+        LATEST["total_detections"] = total
+        LATEST["updated_at"] = time.time()
+
+def get_latest():
+    with LATEST_LOCK:
+        return dict(LATEST)
+
+# ──────────────────────────────────────────────
 # PIECE MAP  →  sesuaikan key dengan nama kelas model
 # ──────────────────────────────────────────────
 
@@ -49,65 +77,49 @@ PIECE_MAP = {
     "black-knight": {"unicode": "♞", "fen": "n", "side": "black"},
     "black-pawn":   {"unicode": "♟", "fen": "p", "side": "black"},
 
-    # Kelas "bishop" tanpa warna (index 0 di model kamu) — kemungkinan
-    # class duplikat/noise dari training. Diberi default warna putih
-    # supaya tetap kebaca di papan, bukan jadi simbol "?".
     "bishop":       {"unicode": "♗", "fen": "B", "side": "white"},
 }
 
 def get_piece(label: str):
-    # normalisasi: lowercase + spasi/underscore -> hyphen, biar fleksibel
     key = label.strip().lower().replace(" ", "-").replace("_", "-")
     return PIECE_MAP.get(label) or PIECE_MAP.get(key) or \
            {"unicode": "?", "fen": "?", "side": "unknown"}
+
 # ──────────────────────────────────────────────
 # BOARD GEOMETRY
 # ──────────────────────────────────────────────
-SQ   = 80          # px per square
-PAD  = 40          # border padding
-BOARD_PX = SQ * 8 + PAD * 2   # 720
+SQ   = 80
+PAD  = 40
+BOARD_PX = SQ * 8 + PAD * 2
 
-# Modern flat palette
-C_LIGHT   = (240, 217, 181)   # warm cream
-C_DARK    = ( 96, 133, 100)   # sage green (not brown — modern)
-C_BORDER  = ( 34,  40,  54)   # dark navy border
-C_BG      = ( 22,  27,  40)   # outer bg
-C_COORD   = (180, 180, 180)   # coordinate labels
-C_WHITE_P = (255, 255, 255)   # white piece fill
-C_BLACK_P = ( 20,  20,  30)   # black piece fill
-C_SHADOW  = (  0,   0,   0, 60)
-
-# Piece shapes: drawn with PIL as flat vector-style SVG-like shapes
-# Each piece is a lambda(draw, cx, cy, sq, color, shadow_color)
+C_LIGHT   = (240, 217, 181)
+C_DARK    = ( 96, 133, 100)
+C_BORDER  = ( 34,  40,  54)
+C_BG      = ( 22,  27,  40)
+C_COORD   = (180, 180, 180)
+C_WHITE_P = (255, 255, 255)
+C_BLACK_P = ( 20,  20,  30)
 
 def draw_circle(draw, cx, cy, r, fill, outline=None, width=2):
     draw.ellipse([cx-r, cy-r, cx+r, cy+r], fill=fill, outline=outline, width=width)
 
 def draw_pawn(draw, cx, cy, sq, fill, ol):
     s = sq * 0.42
-    # base
     draw.rounded_rectangle([cx-s*0.7, cy+s*0.5, cx+s*0.7, cy+s*0.9], radius=4, fill=fill, outline=ol, width=2)
-    # stem
     draw.rounded_rectangle([cx-s*0.22, cy-s*0.1, cx+s*0.22, cy+s*0.55], radius=3, fill=fill, outline=ol, width=2)
-    # head
     draw_circle(draw, cx, int(cy-s*0.35), int(s*0.38), fill, ol, 2)
 
 def draw_rook(draw, cx, cy, sq, fill, ol):
     s = sq * 0.42
-    # base
     draw.rounded_rectangle([cx-s*0.7, cy+s*0.55, cx+s*0.7, cy+s*0.9], radius=4, fill=fill, outline=ol, width=2)
-    # body
     draw.rounded_rectangle([cx-s*0.5, cy-s*0.5, cx+s*0.5, cy+s*0.6], radius=4, fill=fill, outline=ol, width=2)
-    # battlements (3 teeth)
     tw = s * 0.25
     for dx in [-s*0.38, 0, s*0.38]:
         draw.rectangle([cx+dx-tw*0.5, cy-s*0.85, cx+dx+tw*0.5, cy-s*0.48], fill=fill, outline=ol, width=2)
 
 def draw_knight(draw, cx, cy, sq, fill, ol):
     s = sq * 0.42
-    # base
     draw.rounded_rectangle([cx-s*0.7, cy+s*0.55, cx+s*0.7, cy+s*0.9], radius=4, fill=fill, outline=ol, width=2)
-    # body (leaning right)
     pts = [
         (cx-s*0.3, cy+s*0.55),
         (cx+s*0.45, cy-s*0.1),
@@ -118,28 +130,21 @@ def draw_knight(draw, cx, cy, sq, fill, ol):
         (cx-s*0.3,  cy+s*0.1),
     ]
     draw.polygon(pts, fill=fill, outline=ol)
-    # head circle
     draw_circle(draw, int(cx+s*0.2), int(cy-s*0.65), int(s*0.28), fill, ol, 2)
 
 def draw_bishop(draw, cx, cy, sq, fill, ol):
     s = sq * 0.42
-    # base
     draw.rounded_rectangle([cx-s*0.65, cy+s*0.55, cx+s*0.65, cy+s*0.9], radius=4, fill=fill, outline=ol, width=2)
-    # body diamond-ish
     pts = [(cx, cy-s*0.85), (cx+s*0.45, cy+s*0.0), (cx, cy+s*0.55), (cx-s*0.45, cy+s*0.0)]
     draw.polygon(pts, fill=fill, outline=ol)
-    # top dot
     draw_circle(draw, cx, int(cy-s*0.88), int(s*0.14), fill, ol, 2)
 
 def draw_queen(draw, cx, cy, sq, fill, ol):
     s = sq * 0.42
-    # base
     draw.rounded_rectangle([cx-s*0.7, cy+s*0.55, cx+s*0.7, cy+s*0.9], radius=4, fill=fill, outline=ol, width=2)
-    # skirt
     pts = [(cx-s*0.6, cy+s*0.55), (cx-s*0.7, cy-s*0.1),
            (cx, cy+s*0.2), (cx+s*0.7, cy-s*0.1), (cx+s*0.6, cy+s*0.55)]
     draw.polygon(pts, fill=fill, outline=ol)
-    # crown with 5 points
     for i, dx in enumerate([-s*0.5, -s*0.25, 0, s*0.25, s*0.5]):
         h = s*0.55 if i % 2 == 0 else s*0.4
         draw.ellipse([cx+dx-s*0.1, cy-s*0.1-h-s*0.1, cx+dx+s*0.1, cy-s*0.1-h+s*0.1], fill=fill, outline=ol, width=2)
@@ -147,13 +152,9 @@ def draw_queen(draw, cx, cy, sq, fill, ol):
 
 def draw_king(draw, cx, cy, sq, fill, ol):
     s = sq * 0.42
-    # base
     draw.rounded_rectangle([cx-s*0.7, cy+s*0.55, cx+s*0.7, cy+s*0.9], radius=4, fill=fill, outline=ol, width=2)
-    # body
     draw.rounded_rectangle([cx-s*0.45, cy-s*0.5, cx+s*0.45, cy+s*0.6], radius=5, fill=fill, outline=ol, width=2)
-    # cross vertical
     draw.rectangle([cx-s*0.1, cy-s*0.95, cx+s*0.1, cy-s*0.45], fill=fill, outline=ol, width=2)
-    # cross horizontal
     draw.rectangle([cx-s*0.32, cy-s*0.8, cx+s*0.32, cy-s*0.6], fill=fill, outline=ol, width=2)
 
 DRAW_FN = {
@@ -165,20 +166,19 @@ DRAW_FN = {
     "K": draw_king,   "k": draw_king,
 }
 
-# ──────────────────────────────────────────────
-# RENDER BOARD PNG
-# ──────────────────────────────────────────────
-def render_board_png(board_list: list) -> bytes:
-    """Render flat modern chess board PNG. Returns bytes."""
+def render_board_png(board_list: list, transparent: bool = False) -> bytes:
+    """Render flat modern chess board PNG. Returns bytes.
+    transparent=True menghasilkan PNG dengan background alpha=0 di luar
+    papan (cocok untuk OBS Browser/Image Source dengan area kosong tembus)."""
     size = BOARD_PX
-    img = Image.new("RGB", (size, size), C_BG)
+    mode = "RGBA" if transparent else "RGB"
+    bg = (0, 0, 0, 0) if transparent else C_BG
+    img = Image.new(mode, (size, size), bg)
     draw = ImageDraw.Draw(img, "RGBA")
 
-    # Border rectangle
     draw.rounded_rectangle([PAD-6, PAD-6, size-PAD+6, size-PAD+6],
                             radius=6, fill=C_BORDER)
 
-    # Squares
     for row in range(8):
         for col in range(8):
             x0 = PAD + col * SQ
@@ -186,7 +186,6 @@ def render_board_png(board_list: list) -> bytes:
             color = C_LIGHT if (row + col) % 2 == 0 else C_DARK
             draw.rectangle([x0, y0, x0+SQ, y0+SQ], fill=color)
 
-    # Coordinate labels
     try:
         font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 13)
     except:
@@ -195,19 +194,15 @@ def render_board_png(board_list: list) -> bytes:
     files = "abcdefgh"
     ranks = "87654321"
     for i in range(8):
-        # file labels bottom
         fx = PAD + i * SQ + SQ // 2 - 4
         draw.text((fx, size - PAD + 8), files[i], fill=C_COORD, font=font)
-        # rank labels left
         ry = PAD + i * SQ + SQ // 2 - 7
         draw.text((PAD - 22, ry), ranks[i], fill=C_COORD, font=font)
 
-    # Build lookup col,row → piece
     lookup = {}
     for p in board_list:
         lookup[(p["col"], p["row"])] = p
 
-    # Draw pieces
     for (col, row), piece in lookup.items():
         cx = PAD + col * SQ + SQ // 2
         cy = PAD + row * SQ + SQ // 2
@@ -216,7 +211,6 @@ def render_board_png(board_list: list) -> bytes:
         fill  = C_WHITE_P if is_white else C_BLACK_P
         ol    = (60, 60, 60) if is_white else (200, 200, 200)
 
-        # shadow
         shadow_draw = ImageDraw.Draw(img, "RGBA")
         shadow_draw.ellipse([cx-SQ*0.3+3, cy+SQ*0.36+3, cx+SQ*0.3+3, cy+SQ*0.44+3],
                              fill=(0, 0, 0, 50))
@@ -226,17 +220,14 @@ def render_board_png(board_list: list) -> bytes:
         if fn:
             fn(draw, cx, cy, SQ, fill, ol)
         else:
-            # fallback: circle with "?"
             draw_circle(draw, cx, cy, int(SQ*0.35), fill, ol, 2)
             draw.text((cx-4, cy-7), "?", fill=ol, font=font)
 
-    # Subtle grid lines
     for i in range(9):
         x = PAD + i * SQ
         draw.line([x, PAD, x, PAD + 8*SQ], fill=(0,0,0,30), width=1)
         draw.line([PAD, x, PAD + 8*SQ, x], fill=(0,0,0,30), width=1)
 
-    # Watermark
     draw.text((size-110, size-18), "Chess Digitizer", fill=(80,80,100), font=font)
 
     buf = io.BytesIO()
@@ -271,7 +262,6 @@ def build_board(dets, img_w, img_h):
                           "confidence":det["confidence"],"label":det["label"]}
     placed = sorted(board.values(), key=lambda x:(x["row"],x["col"]))
 
-    # FEN
     fen_rows=[]
     for r in range(8):
         empty=0; row_str=""
@@ -351,10 +341,13 @@ def detect():
 
     board_list, fen = build_board(dets, w, h)
 
-    # Render digital board PNG
-    board_png = render_board_png(board_list)
+    # Render papan digital (transparan, dipakai untuk overlay /board.png)
+    board_png = render_board_png(board_list, transparent=True)
 
     ann_bgr  = draw_detections(bgr, results)
+
+    # Simpan state terbaru → dipakai endpoint /board.png, /board, /api/board (OBS)
+    set_latest(board_png, fen, board_list, counts, len(dets))
 
     return jsonify({
         "success":          True,
@@ -363,12 +356,61 @@ def detect():
         "detections":       dets,
         "image_annotated":  to_b64(ann_bgr, is_bgr=True),
         "image_original":   to_b64(bgr,     is_bgr=True),
-        "board_png":        to_b64(board_png),          # ← PNG papan digital
+        "board_png":        to_b64(board_png),
         "board":            board_list,
         "fen":              fen,
         "image_size":       {"width":w,"height":h},
     })
 
+# ──────────────────────────────────────────────
+# ENDPOINT UNTUK OBS / OVERLAY
+# ──────────────────────────────────────────────
+@app.route("/board.png")
+def board_png_endpoint():
+    """
+    Mengembalikan PNG papan digital TERBARU (hasil deteksi terakhir).
+    Pakai ini di OBS sebagai 'Image Source' (akan butuh refresh manual/plugin),
+    atau lebih baik pakai /board (HTML) sebagai 'Browser Source' karena
+    auto-refresh sendiri tanpa perlu plugin tambahan.
+    """
+    latest = get_latest()
+    png = latest["board_png"]
+    if png is None:
+        # papan kosong default kalau belum ada deteksi sama sekali
+        png = render_board_png([], transparent=True)
+    resp = send_file(io.BytesIO(png), mimetype="image/png")
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+@app.route("/board")
+def board_overlay_page():
+    """
+    Halaman HTML ringan, background transparan, yang otomatis
+    me-refresh gambar papan setiap beberapa ratus ms.
+    Tambahkan URL ini sebagai 'Browser Source' di OBS:
+        http://<host>:<port>/board
+    Centang 'Shutdown source when not visible' = OFF agar tetap update.
+    """
+    return render_template("board_overlay.html")
+
+@app.route("/api/board")
+def api_board():
+    """
+    JSON state papan terbaru (fen, board, updated_at) — berguna kalau kamu
+    mau bikin overlay custom sendiri (mis. lewat OBS browser source lain,
+    atau stream-deck/Lichess broadcast bridge) tanpa harus parse gambar.
+    """
+    latest = get_latest()
+    return jsonify({
+        "fen": latest["fen"],
+        "board": latest["board"],
+        "counts": latest["counts"],
+        "total_detections": latest["total_detections"],
+        "updated_at": latest["updated_at"],
+        "board_png_url": "/board.png",
+    })
+
 if __name__=="__main__":
     port=int(os.environ.get("PORT",5000))
-    app.run(host="0.0.0.0",port=port,debug=False)
+    app.run(host="0.0.0.0",port=port,debug=False,threaded=True)
